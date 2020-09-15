@@ -7,40 +7,119 @@
 //
 
 import Foundation
+import UserNotifications
 
-class AlarmController {
-    
+protocol AlarmScheduler: AnyObject {
+    func scheduleUserNotifications(for alarm: Alarm)
+    func cancelUserNotifications(for alarm: Alarm)
+}
+
+class AlarmController: AlarmScheduler {
+
+    //MARK: - Source of truth
     static let shared = AlarmController()
     
+    //MARK: - Properties
     var alarms: [Alarm] = []
     
-    let mockAlarms: [Alarm] = {
-        let alarm1 = Alarm(fireDate: Date(), name: "newAlarm", enabled: true, uuid: "")
-        let alarm2 = Alarm(fireDate: Date(), name: "second", enabled: true, uuid: "")
-        return [alarm1, alarm2]
-    }()
-    
-    func addAlarm(fireDate: Date, name: String, enabled: Bool) {
-        let newAlarm = Alarm(fireDate: fireDate, name: name, enabled: true, uuid: "")
-        alarms.append(newAlarm)
-        print("alarm added")
+    //MARK: - Init
+    init() {
+        loadFromPersistentStorage()
     }
     
-    func updateAlarm(alarm: Alarm, fireDate: Date, name: String, isOn: Bool) {
+    //MARK: - Helper Functions
+    func addAlarm(fireDate: Date, name: String, enabled: Bool) -> Alarm {
+        let newAlarm = Alarm(fireDate: fireDate, name: name, enabled: enabled)
+        alarms.append(newAlarm)
+        if newAlarm.enabled {
+            scheduleUserNotifications(for: newAlarm)
+        } else {
+            cancelUserNotifications(for: newAlarm)
+        }
+        saveToPersistentStorage()
+        return newAlarm
+    }
+    
+    func updateAlarm(alarm: Alarm, fireDate: Date, name: String, enabled: Bool) {
         alarm.fireDate = fireDate
         alarm.name = name
-        alarm.enabled = isOn
-        print("alarm updated")
-        
+        alarm.enabled = enabled
+        if alarm.enabled {
+            scheduleUserNotifications(for: alarm)
+        } else {
+            cancelUserNotifications(for: alarm)
+        }
+        saveToPersistentStorage()
     }
     
     func delete(alarm: Alarm) {
         guard let index = alarms.firstIndex(of: alarm) else {return}
         alarms.remove(at: index)
-        print("alarm deleted")
+        cancelUserNotifications(for: alarm)
+        saveToPersistentStorage()
     }
     
-    static func toggleIsOn(for alarm: Alarm) {
-        alarm.enabled = !alarm.enabled
+    func toggleEnabled(for alarm: Alarm) {
+        alarm.enabled.toggle()
+        if alarm.enabled {
+            scheduleUserNotifications(for: alarm)
+        } else {
+            cancelUserNotifications(for: alarm)
+        }
+        saveToPersistentStorage()
+    }
+    
+    //MARK: - Persistence
+    private static func fileUrl() -> URL {
+        let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        let fileURL = urls[0].appendingPathComponent("Alarm.json")
+        return fileURL
+    }
+    
+    func saveToPersistentStorage() {
+        do {
+            let data = try JSONEncoder().encode(alarms)
+            try data.write(to: AlarmController.fileUrl())
+        } catch {
+            print(error)
+            print(error.localizedDescription)
+        }
+    }
+    
+    func loadFromPersistentStorage() {
+        do {
+            let data = try Data(contentsOf: AlarmController.fileUrl())
+            alarms = try JSONDecoder().decode([Alarm].self, from: data)
+        } catch {
+            print(error)
+            print(error.localizedDescription)
+        }
     }
 }
+
+extension AlarmScheduler {
+    
+    func scheduleUserNotifications(for alarm: Alarm) {
+        let content = UNMutableNotificationContent()
+        content.title = "Alarm"
+        content.body = "Time is up"
+        content.sound = UNNotificationSound.default
+        
+        let date = alarm.fireDate
+        let calendar = Calendar.current
+        // Date Components should be within the scope of alarm....
+        let dateComponents = calendar.dateComponents([.hour, .minute], from: date)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+
+        let request = UNNotificationRequest(identifier: alarm.uuid, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { (error) in
+            print(error)
+        }
+    }
+    
+    func cancelUserNotifications(for alarm: Alarm) {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [alarm.uuid])
+    }
+}
+

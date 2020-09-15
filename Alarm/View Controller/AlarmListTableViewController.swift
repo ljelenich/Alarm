@@ -13,25 +13,29 @@ class AlarmListTableViewController: UITableViewController {
     // MARK: - Lifecycles
     override func viewDidLoad() {
         super.viewDidLoad()
-
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        tableView.reloadData()
     }
 
     // MARK: - Table view data source
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return AlarmController.shared.mockAlarms.count
+        return AlarmController.shared.alarms.count
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let cell = tableView.dequeueReusableCell(withIdentifier: "alarmCell", for: indexPath) as? SwitchTableViewCell else {return UITableViewCell()}
-        let alarm = AlarmController.shared.mockAlarms[indexPath.row]
-        cell.delegate = self
+        let alarm = AlarmController.shared.alarms[indexPath.row]
         cell.alarm = alarm
+        cell.delegate = self
         return cell
     }
 
     override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
         if editingStyle == .delete {
-            let alarm = AlarmController.shared.mockAlarms[indexPath.row]
+            let alarm = AlarmController.shared.alarms[indexPath.row]
             AlarmController.shared.delete(alarm: alarm)
             tableView.deleteRows(at: [indexPath], with: .fade)
         }
@@ -41,7 +45,7 @@ class AlarmListTableViewController: UITableViewController {
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if segue.identifier == "showAlarmDetail" {
             guard let indexPath = tableView.indexPathForSelectedRow, let destination = segue.destination as? AlarmDetailTableViewController else {return}
-            let alarm = AlarmController.shared.mockAlarms[indexPath.row]
+            let alarm = AlarmController.shared.alarms[indexPath.row]
             destination.alarm = alarm
         }
     }
@@ -49,9 +53,7 @@ class AlarmListTableViewController: UITableViewController {
 
 extension AlarmListTableViewController: SwitchTableViewCellDelegate {
     func switchCellSwitchValueChanged(cell: SwitchTableViewCell) {
-        guard let indexPath = tableView.indexPath(for: cell) else {return}
-        let alarm = AlarmController.shared.mockAlarms[indexPath.row]
-        AlarmController.toggleIsOn(for: alarm)
-        cell.updateViews()
+        guard let alarm = cell.alarm else {return}
+        AlarmController.shared.toggleEnabled(for: alarm)
     }
 }
